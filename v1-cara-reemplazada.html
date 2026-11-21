@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Pointer Cat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: a full-bleed playfield. One cat glides to the side of the cursor facing the screen centre and points its paw at it.
+   Controls sit top, credit + hint sit bottom. Each ~260px cell of the screen has its own cat. */
+:root {
+  --bg: #e3eeee;
+  --dots: rgba(31, 60, 70, .16);
+  --fg: #1d2a33;
+  --muted: #53666f;
+  --accent: #e43f78;
+  --accent-fg: #ffffff;
+  --panel: rgba(255, 255, 255, .72);
+  --line: rgba(29, 42, 51, .16);
+  --halo: #ffffff;
+  --halo-a: .9;
+  --shadow: rgba(20, 40, 50, .16);
+  --display: 'Fredoka', 'Trebuchet MS', system-ui, sans-serif;
+  --text: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a2130; --dots: rgba(255, 255, 255, .09); --fg: #edf3f7; --muted: #9db0bd;
+    --accent: #ff7ba8; --accent-fg: #2b0f1b; --panel: rgba(36, 44, 62, .8);
+    --line: rgba(255, 255, 255, .2); --halo: #7580b8; --halo-a: .75; --shadow: rgba(0, 0, 0, .35);
+  }
+}
+
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dots) 1.2px, transparent 1.7px);
+  background-size: 26px 26px;
+  color: var(--fg);
+  font-family: var(--text);
+  font-size: 15px;
+  padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+.tag {
+  font-family: var(--display); font-weight: 600; font-size: 15px;
+  fill: var(--fg); text-anchor: middle;
+  paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round;
+}
+
+.chrome {
+  position: relative; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px;
+}
+.brand { min-width: 0; }
+h1 {
+  margin: 0; font-family: var(--display); font-weight: 600; font-size: 1.7rem; line-height: 1.1;
+  letter-spacing: .01em; text-wrap: balance;
+}
+#count { margin: 2px 0 0; color: var(--muted); font-size: .85rem; font-weight: 700; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  appearance: none; font: 700 .9rem var(--text); color: var(--fg);
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 999px;
+  padding: .6em 1.1em; cursor: pointer; display: inline-flex; align-items: center;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  transition: transform .12s ease, border-color .12s ease;
+}
+.btn:hover { transform: translateY(-1px); border-color: var(--fg); }
+.btn:focus-visible, .btn:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.sr { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+
+.srcpanel {
+  flex: 1 0 100%; box-sizing: border-box; min-width: 0;
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 26px;
+  padding: 12px 16px; border: 1.5px solid var(--line); border-radius: 16px;
+  background: var(--panel); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.opt { display: flex; gap: 9px; align-items: flex-start; font-weight: 700; cursor: pointer; min-width: 0; }
+.opt input { accent-color: var(--accent); width: 1.1rem; height: 1.1rem; margin: .1rem 0 0; flex: none; }
+.opt small { display: block; color: var(--muted); font-weight: 500; font-size: .78rem; margin-top: 1px; }
+.opt code { font-size: .95em; }
+
+.foot {
+  position: fixed; z-index: 1; left: 0; right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+.credit {
+  pointer-events: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 700; font-size: .8rem; color: var(--fg); text-decoration: none;
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 999px; padding: .35em .9em;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+a.credit[href]:hover { border-color: var(--fg); }
+a.credit[href]::after { content: " ↗"; }
+a.credit:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.hint {
+  margin: 0; max-width: 36rem; text-align: center; text-wrap: balance;
+  color: var(--muted); font-weight: 700; font-size: .85rem; line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn { transition: none; }
+  .btn:hover { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<svg id="stage" role="img" aria-label="Un gato que señala el cursor con la pata" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700">
+  <defs>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color: var(--halo); stop-opacity: var(--halo-a)"/>
+      <stop offset="100%" style="stop-color: var(--halo); stop-opacity: 0"/>
+    </radialGradient>
+  </defs>
+  <g id="cat">
+    <circle cx="0" cy="40" r="210" fill="url(#halo)"/>
+    <ellipse cx="0" cy="158" rx="66" ry="10" style="fill: var(--shadow)"/>
+    <g id="art"></g>
+    <text id="tag" class="tag" x="0" y="190"></text>
+  </g>
+</svg>
+
+<header class="chrome">
+  <div class="brand">
+    <h1>Pointer Cat</h1>
+    <p id="count" aria-live="polite"></p>
+  </div>
+  <div class="actions">
+    <button class="btn" id="next" type="button">Otro gatito</button>
+    <button class="btn" id="srcbtn" type="button" aria-expanded="false" aria-controls="srcpanel">Fuentes</button>
+    <label class="btn primary" title="Las fotos se quedan en tu navegador">
+      Subir mis gatos
+      <input class="sr" id="file" type="file" accept="image/*" multiple>
+    </label>
+    <button class="btn" id="clear" type="button" hidden>Quitar mis fotos</button>
+  </div>
+  <section class="srcpanel" id="srcpanel" aria-label="Fuentes de gatos" hidden>
+    <label class="opt"><input type="checkbox" id="s-casa" checked><span>Gatos dibujados<small>8 gatos con cara y cuerpo dibujados</small></span></label>
+    <label class="opt"><input type="checkbox" id="s-cataas" checked><span>Fotos de CATAAS<small>catálogo abierto de fotos de gatos, cargado en vivo</small></span></label>
+    <label class="opt"><input type="checkbox" id="s-ov" checked><span>Fotos de la web<small>búsqueda abierta (Openverse): fotos con licencia libre de Flickr, Wikimedia y otros sitios, con crédito</small></span></label>
+    <label class="opt" id="opt-folder" hidden><input type="checkbox" id="s-folder" checked><span>Mi carpeta de fotos<small>las que pusiste en <code>fotos/</code></small></span></label>
+    <button class="btn" id="more" type="button">Cargar más fotos</button>
+  </section>
+</header>
+
+<div class="foot">
+  <a class="credit" id="credit" target="_blank" rel="noopener noreferrer" hidden></a>
+  <p class="hint">Mueve el cursor por la pantalla: cada rincón tiene su propio gato. Haz clic para cambiar de gato.</p>
+</div>
+
+<script>
+(() => {
+  const INK = '#2b2230', PAD = '#f3a3b6';
+  const CELL = 260; // size in px of each screen cell that has its own cat
+  const $ = id => document.getElementById(id);
+  const svg = $('stage'), rootG = $('cat'), art = $('art'), tagEl = $('tag');
+  const countEl = $('count'), fileEl = $('file'), clearBtn = $('clear'), nextBtn = $('next');
+  const srcBtn = $('srcbtn'), srcPanel = $('srcpanel'), moreBtn = $('more'), creditEl = $('credit');
+  const sCasa = $('s-casa'), sCataas = $('s-cataas'), sOv = $('s-ov'), sFolder = $('s-folder'), optFolder = $('opt-folder');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const HOUSE = [
+    { name: 'Naranjo', pattern: 'tabby',   fur: '#ec9a52', light: '#fbe0bd', mark: '#c9692a', eye: '#7fc45d' },
+    { name: 'Smoking', pattern: 'tux',     fur: '#33323f', light: '#f6f3ee', mark: '#33323f', eye: '#e9c94b', paw: '#f6f3ee' },
+    { name: 'Nube',    pattern: 'tabby',   fur: '#9aa2b3', light: '#dfe3ec', mark: '#717a8e', eye: '#e1a845' },
+    { name: 'Manchas', pattern: 'calico',  fur: '#f7f2ea', light: '#f7f2ea', mark: '#e59a4f', mark2: '#36353f', eye: '#7fc45d', earL: '#e59a4f', earR: '#36353f', tail: '#e59a4f' },
+    { name: 'Mocca',   pattern: 'siamese', fur: '#efe3cf', light: '#f7eddd', mark: '#5e473c', eye: '#62aee6', ear: '#5e473c', paw: '#5e473c', tail: '#5e473c' },
+    { name: 'Sombra',  pattern: 'plain',   fur: '#2d2c37', light: null,      mark: '#2d2c37', eye: '#c8d94a' },
+    { name: 'Copo',    pattern: 'plain',   fur: '#f7f5f1', light: null,      mark: '#f7f5f1', eye: '#69b4ec' },
+    { name: 'Canela',  pattern: 'tabby',   fur: '#a5714a', light: '#e0bf98', mark: '#70472a', eye: '#e6c24a' },
+  ];
+  const BODIES = [HOUSE[0], HOUSE[2], HOUSE[7], HOUSE[4], HOUSE[1], HOUSE[6]];
+  const NAMES = ['Miso', 'Tigre', 'Pelusa', 'Luna', 'Mochi', 'Bigotes', 'Pixel', 'Garfio', 'Sol', 'Tofu', 'Chispa', 'Oliva', 'Gala', 'Rayo', 'Mora', 'Trufa'];
+  let photoN = 0;
+
+  // photo sources
+  const lists = { cataas: [], openverse: [], folder: [] };   // photos that loaded fine
+  const status = { cataas: 'idle', openverse: 'idle', folder: 'idle' };
+  const mine = [];                             // photos uploaded by the visitor
+  const src = { casa: true, cataas: true, openverse: true, folder: true };
+
+  const escAttr = t => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const safeUrl = u => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? u : null;
+
+  function photoCat(url, credit) {
+    const b = BODIES[photoN % BODIES.length];
+    const c = { name: NAMES[photoN % NAMES.length], pattern: 'photo', photo: url, fur: b.fur, paw: b.paw || b.fur, mark: b.mark, light: b.light, credit: credit || null };
+    photoN++;
+    return c;
+  }
+
+  // ---------- cat drawing ----------
+  function buildCat(c, uid) {
+    const fur = c.fur, light = c.light, mark = c.mark, m2 = c.mark2 || c.mark;
+    const paw = c.paw || fur, tail = c.tail || fur;
+    const earL = c.earL || c.ear || fur, earR = c.earR || c.ear || fur;
+    const photo = !!c.photo;
+
+    let bm = '';
+    if (c.pattern === 'tabby') {
+      bm = `<ellipse cx="0" cy="72" rx="24" ry="46" fill="${light}"/><g fill="none" stroke="${mark}" stroke-width="6" stroke-linecap="round">` +
+        [-1, 1].map(k => `<path d="M${k * 58} 36 Q${k * 40} 43 ${k * 27} 35"/><path d="M${k * 58} 62 Q${k * 40} 70 ${k * 24} 61"/><path d="M${k * 58} 90 Q${k * 42} 98 ${k * 28} 89"/>`).join('') + `</g>`;
+    } else if (c.pattern === 'tux') {
+      bm = `<ellipse cx="0" cy="64" rx="27" ry="50" fill="${light}"/>`;
+    } else if (c.pattern === 'calico') {
+      bm = `<ellipse cx="-34" cy="104" rx="28" ry="38" fill="${mark}"/><ellipse cx="36" cy="52" rx="24" ry="30" fill="${m2}"/>`;
+    } else if (c.pattern === 'siamese') {
+      bm = `<ellipse cx="0" cy="70" rx="40" ry="60" fill="${light}" opacity=".7"/>`;
+    }
+
+    let hm = '';
+    if (c.pattern === 'tabby') {
+      hm = `<g fill="none" stroke="${mark}" stroke-width="4.5" stroke-linecap="round"><path d="M0 -43 L0 -28"/><path d="M-11 -41 L-8 -29"/><path d="M11 -41 L8 -29"/><path d="M-53 2 L-40 5"/><path d="M-51 13 L-38 14"/><path d="M53 2 L40 5"/><path d="M51 13 L38 14"/></g>`;
+    } else if (c.pattern === 'tux') {
+      hm = `<path d="M0 -44 C-11 -27 -13 -12 -9 0 L9 0 C13 -12 11 -27 0 -44Z" fill="${light}"/>`;
+    } else if (c.pattern === 'calico') {
+      hm = `<ellipse cx="-30" cy="-14" rx="30" ry="26" fill="${mark}"/><ellipse cx="36" cy="-22" rx="22" ry="20" fill="${m2}"/>`;
+    } else if (c.pattern === 'siamese') {
+      hm = `<ellipse cx="0" cy="14" rx="31" ry="25" fill="${mark}" opacity=".88"/>`;
+    }
+    const muzzle = (light && (c.pattern === 'tabby' || c.pattern === 'tux')) ? `<ellipse cx="0" cy="18" rx="25" ry="17" fill="${light}"/>` : '';
+
+    const earPaths = photo
+      ? [`M-46 -16 L-46 -78 L-10 -42Z`, `M46 -16 L46 -78 L10 -42Z`]
+      : [`M-50 -10 L-47 -76 L-8 -38Z`, `M50 -10 L47 -76 L8 -38Z`];
+    const ears = `<g stroke="${INK}" stroke-width="3" stroke-linejoin="round"><path d="${earPaths[0]}" fill="${earL}"/><path d="${earPaths[1]}" fill="${earR}"/></g>` +
+      `<path d="M-42 -26 L-41 -60 L-22 -40Z" fill="${PAD}" opacity=".85"/><path d="M42 -26 L41 -60 L22 -40Z" fill="${PAD}" opacity=".85"/>`;
+
+    let headInner;
+    if (photo) {
+      headInner = `<clipPath id="pc${uid}"><circle r="47"/></clipPath>
+        <circle r="47" fill="${fur}"/>
+        <image href="${escAttr(c.photo)}" x="-47" y="-47" width="94" height="94" clip-path="url(#pc${uid})" preserveAspectRatio="xMidYMid slice"/>
+        <circle r="47" fill="none" stroke="${INK}" stroke-width="3.5"/>`;
+    } else {
+      const eyes = [-20, 20].map(x => `<g transform="translate(${x} -2)"><ellipse rx="10.5" ry="12" fill="${c.eye}" stroke="${INK}" stroke-width="2"/><ellipse class="pu" rx="3.6" ry="9" fill="#17121c"/><circle cx="-3.2" cy="-4.5" r="2.6" fill="#fff"/></g>`).join('');
+      const whisk = [-1, 1].map(k => `<path d="M${k * 24} 18 L${k * 64} 10 M${k * 25} 23 L${k * 66} 24 M${k * 24} 28 L${k * 62} 38"/>`).join('');
+      headInner = `<clipPath id="hc${uid}"><ellipse rx="54" ry="44"/></clipPath>
+        <ellipse rx="54" ry="44" fill="${fur}"/>
+        <g clip-path="url(#hc${uid})">${hm}${muzzle}</g>
+        <ellipse rx="54" ry="44" fill="none" stroke="${INK}" stroke-width="3"/>
+        <g class="face">
+          <g class="eyes">${eyes}</g>
+          <ellipse cx="-36" cy="15" rx="8" ry="4.5" fill="${PAD}" opacity=".4"/><ellipse cx="36" cy="15" rx="8" ry="4.5" fill="${PAD}" opacity=".4"/>
+          <path d="M-6 11 Q0 9 6 11 Q3 18 0 19 Q-3 18 -6 11Z" fill="${PAD}" stroke="${INK}" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M0 19 L0 23 M0 23 Q-6 29 -13 24 M0 23 Q6 29 13 24" fill="none" stroke="${INK}" stroke-width="2" stroke-linecap="round"/>
+          <g fill="none" stroke="${INK}" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round">${whisk}</g>
+        </g>`;
+    }
+
+    const arm = side => `<g class="arm" data-side="${side}">
+      <path class="ao" fill="none" stroke="${INK}" stroke-width="26" stroke-linecap="round"/>
+      <path class="af" fill="none" stroke="${fur}" stroke-width="20" stroke-linecap="round"/>
+      <g class="paw"><ellipse cx="3" rx="15" ry="13.5" fill="${paw}" stroke="${INK}" stroke-width="3"/>
+      <path d="M9 -6 L15 -6 M10 0 L16.5 0 M9 6 L15 6" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
+      <circle cx="-4" cy="0" r="4" fill="${PAD}"/></g></g>`;
+
+    return `
+      <g class="tail"><path d="M40 148 C96 154 120 108 98 62" fill="none" stroke="${INK}" stroke-width="22" stroke-linecap="round"/><path d="M40 148 C96 154 120 108 98 62" fill="none" stroke="${tail}" stroke-width="16" stroke-linecap="round"/></g>
+      <clipPath id="bc${uid}"><ellipse cx="0" cy="78" rx="58" ry="78"/></clipPath>
+      <ellipse cx="0" cy="78" rx="58" ry="78" fill="${fur}"/>
+      <g clip-path="url(#bc${uid})">${bm}</g>
+      <ellipse cx="0" cy="78" rx="58" ry="78" fill="none" stroke="${INK}" stroke-width="3"/>
+      <ellipse cx="-42" cy="124" rx="24" ry="30" fill="${fur}" stroke="${INK}" stroke-width="3" transform="rotate(8 -42 124)"/>
+      <ellipse cx="42" cy="124" rx="24" ry="30" fill="${fur}" stroke="${INK}" stroke-width="3" transform="rotate(-8 42 124)"/>
+      <ellipse cx="-38" cy="151" rx="24" ry="10" fill="${paw}" stroke="${INK}" stroke-width="3"/>
+      <ellipse cx="38" cy="151" rx="24" ry="10" fill="${paw}" stroke="${INK}" stroke-width="3"/>
+      ${arm(-1)}${arm(1)}
+      <g class="head" transform="translate(0 -34)">${ears}${headInner}</g>`;
+  }
+
+  // ---------- state ----------
+  let W = innerWidth, H = innerHeight, s = 1;
+  let P = { x: innerWidth * 0.64, y: innerHeight * 0.52 };
+  let C = null;
+  let cur = null, els = null, uid = 0, phi = 0.6, side = 1, touched = false;
+  let popStart = 0, lastSwitch = 0, lastCell = [0, 0];
+  let nextBlink = 2500, blinkStart = -1e9, last = 0;
+
+  function resize() {
+    W = innerWidth; H = innerHeight;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    s = Math.max(0.55, Math.min(1.1, Math.min(W, H) / 820));
+  }
+
+  // ---------- which cat goes where ----------
+  const photoPool = () => [].concat(src.cataas ? lists.cataas : [], src.openverse ? lists.openverse : [], src.folder ? lists.folder : [], mine);
+  const houseOn = () => src.casa || !photoPool().length;
+  const catPool = () => (houseOn() ? HOUSE : []).concat(photoPool());
+
+  function showCredit(c) {
+    const cr = c.credit;
+    if (!cr || !cr.text) { creditEl.hidden = true; return; }
+    creditEl.textContent = cr.text;
+    const u = safeUrl(cr.url);
+    if (u) creditEl.setAttribute('href', u); else creditEl.removeAttribute('href');
+    creditEl.hidden = false;
+  }
+
+  function setCat(c) {
+    cur = c; uid++;
+    art.innerHTML = buildCat(c, uid);
+    const q = sel => art.querySelector(sel);
+    els = { tail: q('.tail'), head: q('.head'), face: q('.face'), eyes: q('.eyes'), pupils: art.querySelectorAll('.pu'), arms: {} };
+    art.querySelectorAll('.arm').forEach(g => {
+      els.arms[g.dataset.side] = { ao: g.querySelector('.ao'), af: g.querySelector('.af'), paw: g.querySelector('.paw') };
+    });
+    tagEl.textContent = c.name;
+    showCredit(c);
+    phi = Math.random() * Math.PI * 2;
+    popStart = lastSwitch = performance.now();
+  }
+
+  function hash(a, b) {
+    let h = (Math.imul(a, 374761393) + Math.imul(b, 668265263)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+  function pick(cx, cy) {
+    const h = hash(cx, cy), ph = photoPool();
+    const usePhoto = ph.length && (!houseOn() || (h % 10) < 7);
+    const list = usePhoto ? ph : HOUSE;
+    let c = list[(h >>> 4) % list.length];
+    if (c === cur) { const a = catPool(); c = a[(a.indexOf(c) + 1) % a.length]; }
+    return c;
+  }
+  function randomCat() {
+    const a = catPool(); let c;
+    do { c = a[Math.floor(Math.random() * a.length)]; } while (c === cur && a.length > 1);
+    return c;
+  }
+
+  const easeOutBack = x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+  const clamp = (v, lo, hi) => hi < lo ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+
+  function setArm(a, x1, y1, cx, cy, x2, y2, ang) {
+    const d = `M${x1.toFixed(1)} ${y1.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+    a.ao.setAttribute('d', d); a.af.setAttribute('d', d);
+    a.paw.setAttribute('transform', `translate(${x2.toFixed(1)} ${y2.toFixed(1)}) rotate(${ang.toFixed(1)})`);
+  }
+
+  function frame(t) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t;
+
+    // another cat when the cursor enters a new cell of the screen
+    const cx = Math.floor(P.x / CELL), cy = Math.floor(P.y / CELL);
+    if ((cx !== lastCell[0] || cy !== lastCell[1]) && t - lastSwitch > 300) {
+      lastCell = [cx, cy];
+      setCat(pick(cx, cy));
+    }
+
+    // where the cat sits: on the side of the cursor that faces the screen centre
+    const vx = W / 2 - P.x, vy = H / 2 - P.y, vl = Math.hypot(vx, vy);
+    const w = Math.min(1, vl / (0.18 * Math.min(W, H)));
+    let dx = (vx / (vl || 1)) * w + Math.cos(phi) * (1 - w);
+    let dy = (vy / (vl || 1)) * w + Math.sin(phi) * (1 - w);
+    const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const R = 195 * s;
+    const T = {
+      x: clamp(P.x + dx * R, 78 * s + 10, W - 78 * s - 10),
+      y: clamp(P.y + dy * R, 118 * s + 10, H - 175 * s - 10)
+    };
+    if (!C) C = { x: T.x, y: T.y };
+    const k = reduce ? 1 : 1 - Math.exp(-dt * 12);
+    C.x += (T.x - C.x) * k; C.y += (T.y - C.y) * k;
+
+    const pt = Math.max(0, Math.min(1, (t - popStart) / 280));
+    const sc = s * (reduce ? 1 : 0.55 + 0.45 * easeOutBack(pt));
+    rootG.setAttribute('transform', `translate(${C.x.toFixed(1)} ${C.y.toFixed(1)}) scale(${sc.toFixed(3)})`);
+
+    // pointing arm, in the cat's own coordinates
+    const ex0 = (P.x - C.x) / sc, ey0 = (P.y - C.y) / sc;
+    if (Math.abs(ex0) > 26) side = ex0 < 0 ? -1 : 1;
+    const sx = side * 34, sy = 22;
+    let ex = ex0, ey = ey0, ddx = ex - sx, ddy = ey - sy, len = Math.hypot(ddx, ddy) || 1;
+    const maxL = 280;
+    if (len > maxL) { ex = sx + ddx * maxL / len; ey = sy + ddy * maxL / len; ddx = ex - sx; ddy = ey - sy; len = maxL; }
+    let nx = -ddy / len, ny = ddx / len;
+    if (nx * side * 0.6 + ny < 0) { nx = -nx; ny = -ny; }
+    const bend = Math.min(18, len * 0.09);
+    const bx = (sx + ex) / 2 + nx * bend, by = (sy + ey) / 2 + ny * bend;
+    const ang = Math.atan2(ey - by, ex - bx) * 180 / Math.PI;
+    setArm(els.arms[side], sx, sy, bx, by, ex, ey, ang);
+    const o = -side;
+    setArm(els.arms[o], o * 34, 22, o * 50, 72, o * 44, 126, 90);
+
+    // head, face and pupils lean toward the cursor
+    const hx = ex0, hy = ey0 + 34, hl = Math.hypot(hx, hy) || 1, ux = hx / hl, uy = hy / hl;
+    els.head.setAttribute('transform', `translate(${(ux * 3).toFixed(1)} ${(-34 + uy * 2).toFixed(1)}) rotate(${(ux * 12).toFixed(1)})`);
+    if (els.face) {
+      els.face.setAttribute('transform', `translate(${(ux * 6).toFixed(1)} ${(uy * 4).toFixed(1)})`);
+      els.pupils.forEach(p => p.setAttribute('transform', `translate(${(ux * 2.4).toFixed(1)} ${(uy * 3).toFixed(1)})`));
+    }
+
+    if (!reduce) {
+      els.tail.setAttribute('transform', `rotate(${(Math.sin(t / 430) * 8).toFixed(1)} 40 148)`);
+      if (els.eyes) {
+        if (t > nextBlink) { blinkStart = t; nextBlink = t + 2200 + Math.random() * 3500; }
+        const bt = (t - blinkStart) / 150;
+        const b = bt >= 0 && bt < 1 ? 1 - 0.9 * Math.sin(Math.PI * bt) : 1;
+        els.eyes.setAttribute('transform', `translate(0 -2) scale(1 ${b.toFixed(2)}) translate(0 2)`);
+      }
+    }
+  }
+
+  // ---------- loading photos ----------
+  function preload(url, ms = 10000) {
+    return new Promise(resolve => {
+      const im = new Image();
+      let done = false;
+      const fin = ok => { if (!done) { done = true; clearTimeout(tm); resolve(ok); } };
+      const tm = setTimeout(() => fin(false), ms);
+      im.onload = () => fin(im.naturalWidth > 0);
+      im.onerror = () => fin(false);
+      im.referrerPolicy = 'no-referrer';
+      im.src = url;
+    });
+  }
+  async function fetchJson(url, ms = 8000) {
+    const ctl = new AbortController();
+    const tm = setTimeout(() => ctl.abort(), ms);
+    try {
+      const r = await fetch(url, { signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally { clearTimeout(tm); }
+  }
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+  // loads items in parallel (6 at a time) and keeps those that show up, until `out` has `target` entries
+  async function loadBatch(items, toEntry, out, target, onAdd, conc = 6) {
+    let i = 0;
+    const worker = async () => {
+      while (i < items.length && out.length < target) {
+        const e = toEntry(items[i++]);
+        if (out.some(x => x.photo === e.url)) continue;
+        if (await preload(e.url) && out.length < target) { out.push(photoCat(e.url, e.credit)); if (onAdd) onAdd(); }
+      }
+    };
+    await Promise.all(Array.from({ length: conc }, worker));
+  }
+
+  function showFirstPhoto(list) {
+    if (!touched && list.length === 1 && cur && !cur.photo) setCat(list[0]);
+  }
+
+  async function loadCataas() {
+    if (status.cataas === 'loading') return;
+    status.cataas = 'loading'; updateCount();
+    let items = [];
+    try {
+      const cnt = await fetchJson('https://cataas.com/api/count');
+      const total = Math.max(60, +cnt.count || 500);
+      const skip = Math.floor(Math.random() * Math.max(1, total - 60));
+      const list = await fetchJson(`https://cataas.com/api/cats?limit=60&skip=${skip}`);
+      items = (Array.isArray(list) ? list : [])
+        .filter(c => c && (c.id || c._id) && /^image\/(jpeg|png|webp)/.test(c.mimetype || 'image/jpeg'))
+        .map(c => { const id = encodeURIComponent(c.id || c._id); return { url: `https://cataas.com/cat/${id}?width=320&height=320&fit=cover`, page: `https://cataas.com/cat/${id}` }; });
+    } catch (_) { /* the catalog did not answer: fall back to random cats below */ }
+    if (!items.length) {
+      items = Array.from({ length: 40 }, () => ({ url: `https://cataas.com/cat?width=320&height=320&fit=cover&_=${Math.random().toString(36).slice(2, 8)}`, page: 'https://cataas.com/' }));
+    }
+    shuffle(items);
+    const target = Math.min(240, lists.cataas.length + 30);
+    await loadBatch(items, it => ({ url: it.url, credit: { text: 'Foto: CATAAS', url: it.page } }), lists.cataas, target, () => { showFirstPhoto(lists.cataas); updateCount(); });
+    status.cataas = lists.cataas.length ? 'ok' : 'fail';
+    updateCount();
+  }
+
+  // Openverse: open-licence image search (Flickr, Wikimedia Commons and other sites). Anonymous use is
+  // limited to 1 request per second and 20 results per page, so calls are spaced out and results cached.
+  const OV_QUERIES = ['cat portrait', 'kitten', 'tabby cat', 'black cat', 'orange cat', 'cat face', 'siamese cat', 'white cat', 'grey cat', 'cat looking at camera'];
+  const OV_KEY = 'pc-ov-v1';
+  let ovLast = 0;
+  const ovCacheGet = () => { try { const o = JSON.parse(localStorage.getItem(OV_KEY) || 'null'); if (o && Date.now() - o.t < 6 * 3600e3 && Array.isArray(o.items)) return o.items; } catch (_) {} return null; };
+  const ovCacheSet = items => { try { localStorage.setItem(OV_KEY, JSON.stringify({ t: Date.now(), items: items.slice(0, 80) })); } catch (_) {} };
+
+  function ovCredit(r) {
+    const lic = String(r.license || '').toLowerCase();
+    const label = lic === 'cc0' ? 'CC0' : lic === 'pdm' ? 'Dominio público' : ('CC ' + lic.toUpperCase() + ' ' + (r.license_version || '')).trim();
+    let who = String(r.creator || 'autor desconocido').replace(/\s+/g, ' ').trim();
+    if (who.length > 36) who = who.slice(0, 35) + '…';
+    return `Foto: ${who} · ${label} (recortada)`;
+  }
+
+  async function ovSearch(q, o) {
+    const wait = ovLast + 1100 - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    ovLast = Date.now();
+    const u = new URL('https://api.openverse.org/v1/images/');
+    const p = u.searchParams;
+    p.set('q', q); p.set('page_size', '20'); p.set('page', String(1 + Math.floor(Math.random() * 3)));
+    p.set('category', 'photograph'); p.set('license_type', 'commercial,modification'); p.set('mature', 'false');
+    if (o.square) p.set('aspect_ratio', 'square');
+    if (o.tags) p.set('tags', 'cat');
+    let data;
+    try {
+      data = await fetchJson(u.toString(), 12000);
+    } catch (e) {
+      if (/HTTP 429/.test(String(e))) throw e;          // rate limited: stop here
+      p.set('page', '1');                               // maybe the random page does not exist: try the first one
+      await new Promise(r => setTimeout(r, 1100)); ovLast = Date.now();
+      try { data = await fetchJson(u.toString(), 12000); } catch (_) { return []; }
+    }
+    return (data.results || [])
+      .filter(r => r && !r.mature && safeUrl(r.thumbnail) && safeUrl(r.foreign_landing_url))
+      .map(r => ({ url: r.thumbnail, page: r.foreign_landing_url, text: ovCredit(r) }));
+  }
+
+  async function loadOpenverse(more) {
+    if (status.openverse === 'loading') return;
+    status.openverse = 'loading'; updateCount();
+    const target = Math.min(120, lists.openverse.length + 30);
+    const add = items => loadBatch(items, it => ({ url: it.url, credit: { text: it.text, url: it.page } }), lists.openverse, target,
+      () => { showFirstPhoto(lists.openverse); updateCount(); }, 3);
+    try {
+      const cached = more ? null : ovCacheGet();
+      if (cached) await add(shuffle(cached.slice()));
+      if (lists.openverse.length < target) {
+        const seen = new Set(lists.openverse.map(c => c.photo)), fresh = [];
+        for (const q of shuffle(OV_QUERIES.slice()).slice(0, 3)) {
+          if (lists.openverse.length >= target) break;
+          let res = await ovSearch(q, { square: true, tags: true });
+          if (res.length < 5) res = await ovSearch(q, { square: false, tags: true });
+          if (res.length < 5) res = await ovSearch(q, { square: false, tags: false });
+          res = res.filter(x => !seen.has(x.url)); res.forEach(x => seen.add(x.url));
+          fresh.push(...res);
+          await add(res);
+        }
+        if (fresh.length) ovCacheSet(fresh);
+      }
+    } catch (_) { /* rate limit, offline or blocked: keep what loaded */ }
+    status.openverse = lists.openverse.length ? 'ok' : 'fail';
+    updateCount();
+  }
+
+  async function loadFolder() {
+    status.folder = 'loading';
+    try {
+      const list = await fetchJson('fotos/fotos.json');
+      const items = (Array.isArray(list) ? list : [])
+        .filter(x => x && typeof x.archivo === 'string' && /^[\w\-. ()]+\.(jpe?g|png|webp|gif|avif)$/i.test(x.archivo))
+        .slice(0, 300);
+      await loadBatch(items, it => ({ url: 'fotos/' + encodeURIComponent(it.archivo), credit: { text: it.credito || 'Foto de la carpeta', url: safeUrl(it.enlace) } }), lists.folder, 300, () => { showFirstPhoto(lists.folder); updateCount(); });
+    } catch (_) { /* no fotos.json (or opened as a local file): that is fine */ }
+    status.folder = lists.folder.length ? 'ok' : 'none';
+    optFolder.hidden = !lists.folder.length;
+    updateCount();
+  }
+
+  function updateCount() {
+    const p = [`${HOUSE.length} dibujados`];
+    if (status.cataas === 'loading') p.push('buscando fotos…');
+    else if (status.cataas === 'ok') p.push(`${lists.cataas.length} fotos de CATAAS`);
+    else if (status.cataas === 'fail') p.push('CATAAS no respondió');
+    if (status.openverse === 'ok' || lists.openverse.length) p.push(`${lists.openverse.length} fotos de la web`);
+    else if (status.openverse === 'fail') p.push('la búsqueda web no respondió');
+    if (lists.folder.length) p.push(`${lists.folder.length} de tu carpeta`);
+    if (mine.length) p.push(`${mine.length} tuyos`);
+    countEl.textContent = p.join(' · ');
+    clearBtn.hidden = !mine.length;
+  }
+
+  // ---------- input ----------
+  function setP(e) { P.x = e.clientX; P.y = e.clientY; }
+  window.addEventListener('pointermove', setP, { passive: true });
+  window.addEventListener('pointerdown', e => {
+    if (e.target.closest && e.target.closest('.chrome, .credit')) return;
+    touched = true; setP(e); setCat(randomCat());
+  });
+  nextBtn.addEventListener('click', () => { touched = true; setCat(randomCat()); });
+  window.addEventListener('resize', resize);
+
+  srcBtn.addEventListener('click', () => {
+    srcPanel.hidden = !srcPanel.hidden;
+    srcBtn.setAttribute('aria-expanded', String(!srcPanel.hidden));
+  });
+  sCasa.addEventListener('change', () => { src.casa = sCasa.checked; });
+  sFolder.addEventListener('change', () => { src.folder = sFolder.checked; });
+  sCataas.addEventListener('change', () => {
+    src.cataas = sCataas.checked;
+    if (src.cataas && !lists.cataas.length) loadCataas();
+  });
+  sOv.addEventListener('change', () => {
+    src.openverse = sOv.checked;
+    if (src.openverse && !lists.openverse.length) loadOpenverse();
+  });
+  moreBtn.addEventListener('click', () => {
+    if (!src.cataas && !src.openverse) { sOv.checked = src.openverse = true; sCataas.checked = src.cataas = true; }
+    if (src.cataas) loadCataas();
+    if (src.openverse) loadOpenverse(true);
+  });
+
+  // ---------- your own cats ----------
+  function toSquare(file) {
+    return new Promise((res, rej) => {
+      const u = URL.createObjectURL(file), im = new Image();
+      im.onload = () => {
+        const n = Math.min(im.naturalWidth, im.naturalHeight);
+        const cv = document.createElement('canvas'); cv.width = cv.height = 200;
+        cv.getContext('2d').drawImage(im, (im.naturalWidth - n) / 2, (im.naturalHeight - n) / 2, n, n, 0, 0, 200, 200);
+        URL.revokeObjectURL(u);
+        res(cv.toDataURL('image/jpeg', 0.88));
+      };
+      im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('imagen no válida')); };
+      im.src = u;
+    });
+  }
+  fileEl.addEventListener('change', async () => {
+    const files = [...fileEl.files].filter(f => f.type.startsWith('image/')).slice(0, 24);
+    let firstNew = null;
+    for (const f of files) {
+      try {
+        const url = await toSquare(f);
+        const c = photoCat(url, null);
+        c.name = `Tu gato ${mine.length + 1}`;
+        mine.push(c); if (!firstNew) firstNew = c;
+      } catch (_) { /* skip files that are not readable images */ }
+    }
+    fileEl.value = '';
+    updateCount();
+    if (firstNew) { touched = true; setCat(firstNew); }
+  });
+  clearBtn.addEventListener('click', () => {
+    mine.length = 0; updateCount();
+    if (cur && cur.photo && !lists.cataas.includes(cur) && !lists.openverse.includes(cur) && !lists.folder.includes(cur)) setCat(HOUSE[0]);
+  });
+
+  resize();
+  updateCount();
+  lastCell = [Math.floor(P.x / CELL), Math.floor(P.y / CELL)];
+  setCat(HOUSE[0]);
+  requestAnimationFrame(t => { last = t; frame(t); });
+  loadCataas();
+  loadOpenverse();
+  loadFolder();
+})();
+</script>
+</body>
+</html>

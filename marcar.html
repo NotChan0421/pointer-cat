@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Marcar fotos · Pointer Cat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: a single working column. Header with counters, an automatic-marking panel, one large photo to click on,
+   then a review grid of everything marked so far. */
+:root {
+  --bg: #e3eeee; --fg: #1d2a33; --muted: #53666f; --accent: #e43f78; --accent-fg: #ffffff;
+  --panel: rgba(255, 255, 255, .78); --line: rgba(29, 42, 51, .18); --stage: rgba(29, 42, 51, .06); --ok: #1f8a5b;
+  --display: 'Fredoka', 'Trebuchet MS', system-ui, sans-serif;
+  --text: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a2130; --fg: #edf3f7; --muted: #9db0bd; --accent: #ff7ba8; --accent-fg: #2b0f1b;
+    --panel: rgba(36, 44, 62, .82); --line: rgba(255, 255, 255, .22); --stage: rgba(255, 255, 255, .06); --ok: #5fd4a0;
+  }
+}
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--text); font-size: 15px; box-sizing: border-box;
+  min-height: 100vh; padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; }
+h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 1.6rem; line-height: 1.1; }
+#stats { margin: 2px 0 0; color: var(--muted); font-weight: 700; font-size: .88rem; }
+.actions, .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn {
+  appearance: none; font: 700 .9rem var(--text); color: var(--fg); text-decoration: none;
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 999px; padding: .55em 1.05em; cursor: pointer; display: inline-flex; align-items: center;
+}
+.btn:hover:not(:disabled) { border-color: var(--fg); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn:focus-visible, .btn:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.sr { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+
+.box { margin: 0; padding: 12px 16px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--panel); line-height: 1.5; font-weight: 600; }
+.box b { font-weight: 800; }
+.box p { margin: 0; }
+.box p + p, .box .row { margin-top: 8px; }
+.muted { color: var(--muted); font-weight: 600; font-size: .88rem; }
+kbd { font: 700 .85em var(--text); padding: .05em .45em; border: 1.5px solid var(--line); border-radius: 6px; background: var(--stage); }
+label.num { display: inline-flex; gap: 8px; align-items: center; font-weight: 700; }
+input[type=number] { width: 4.5em; font: 700 .9rem var(--text); color: var(--fg); background: var(--stage); border: 1.5px solid var(--line); border-radius: 10px; padding: .4em .5em; }
+#autoMsg { font-weight: 700; }
+#bar { height: 8px; border-radius: 99px; background: var(--stage); overflow: hidden; margin-top: 8px; }
+#bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+.stagebox { position: relative; display: grid; place-items: center; min-height: 46vh; border-radius: 16px; background: var(--stage); padding: 10px; box-sizing: border-box; }
+#photoWrap { position: relative; display: inline-block; line-height: 0; max-width: 100%; }
+#shot { display: block; max-width: 100%; max-height: 62vh; border-radius: 10px; cursor: crosshair; touch-action: manipulation; user-select: none; -webkit-user-drag: none; }
+body.auto #shot { cursor: progress; }
+.ring { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 3px solid var(--accent); border-radius: 50%; pointer-events: none; animation: ring .8s ease-out forwards; }
+@keyframes ring { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+#msg { color: var(--muted); font-weight: 700; text-align: center; padding: 30px 12px; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+#credit { font-weight: 700; font-size: .85rem; color: var(--fg); min-width: 0; overflow-wrap: anywhere; }
+
+#review h2 { margin: 0 0 4px; font-family: var(--display); font-size: 1.15rem; }
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; align-items: start; }
+.cell { position: relative; border-radius: 10px; overflow: hidden; background: var(--stage); line-height: 0; }
+.cell img { display: block; width: 100%; height: auto; cursor: crosshair; user-select: none; -webkit-user-drag: none; }
+.cell .dot { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--accent); border: 2.5px solid #fff; box-shadow: 0 0 0 1.5px rgba(0,0,0,.45); pointer-events: none; }
+.cell .del { position: absolute; top: 5px; right: 5px; width: 28px; height: 28px; line-height: 1; border-radius: 50%; border: 0; cursor: pointer; font: 800 15px var(--text); background: rgba(0,0,0,.62); color: #fff; }
+.cell .del:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.cell .tag { position: absolute; left: 5px; bottom: 5px; line-height: 1.2; font: 800 11px var(--text); padding: 2px 7px; border-radius: 99px; background: rgba(0,0,0,.62); color: #fff; }
+
+details { border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 14px; background: var(--panel); }
+summary { cursor: pointer; font-weight: 800; }
+textarea { width: 100%; box-sizing: border-box; min-height: 160px; margin-top: 10px; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--fg); background: var(--stage); border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; }
+@media (prefers-reduced-motion: reduce) { .ring { animation: none; opacity: 0; } #bar i { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Marcar fotos</h1>
+      <p id="stats" aria-live="polite">Buscando fotos…</p>
+    </div>
+    <div class="actions">
+      <a class="btn" href="index.html">Probar la página</a>
+      <label class="btn" title="Tus fotos no salen de tu navegador">Agregar mis fotos
+        <input class="sr" id="own" type="file" accept="image/*" multiple>
+      </label>
+      <button class="btn primary" id="dl" type="button" disabled>Descargar fotos.js</button>
+    </div>
+  </header>
+
+  <section class="box" aria-label="Marcado automático">
+    <p><b>Marcado automático.</b> La página busca el gato en cada foto, encuentra su pata o su nariz y guarda ese punto sin que hagas nada. Las fotos donde no ve un gato o ninguna pata ni nariz se descartan solas.</p>
+    <div class="row">
+      <label class="num">Marcar hasta <input id="target" type="number" min="5" max="300" value="40"> fotos</label>
+      <button class="btn primary" id="auto" type="button">Empezar marcado automático</button>
+      <button class="btn" id="stop" type="button" hidden>Detener</button>
+    </div>
+    <p id="autoMsg" class="muted"></p>
+    <div id="bar" hidden><i></i></div>
+    <p class="muted">La primera vez se descarga un modelo de unos 155 MB (después queda guardado en el navegador). Una foto tarda unos segundos en analizarse. Cuando termine, revisa la cuadrícula de abajo: es una detección automática y se equivoca a veces, así que quita las malas con la ✕ o haz clic en la foto para mover el punto.</p>
+  </section>
+
+  <p class="box"><b>También puedes marcar a mano:</b> haz clic en la punta de la pata o de la nariz con la que el gato apunta. <kbd>S</kbd> salta la foto (si no es un gato o no apunta a ningún lado) y <kbd>Z</kbd> deshace. Cada foto sirve también en espejo.</p>
+
+  <div class="stagebox">
+    <div id="photoWrap" hidden><img id="shot" alt="Foto para marcar" draggable="false"></div>
+    <div id="msg">Buscando fotos de gatos…</div>
+  </div>
+
+  <div class="meta">
+    <span id="credit"></span>
+    <div class="row">
+      <button class="btn" id="undo" type="button" disabled>Deshacer</button>
+      <button class="btn" id="skip" type="button" disabled>Saltar</button>
+    </div>
+  </div>
+
+  <section id="review" class="box" aria-label="Revisar marcas" hidden>
+    <h2>Revisar marcas</h2>
+    <p class="muted">El punto rosa es adonde apunta el gato. Si está mal, haz clic en la foto para moverlo, o quítala con la ✕.</p>
+    <div id="grid"></div>
+  </section>
+
+  <details id="exp">
+    <summary>Guardar para la página publicada</summary>
+    <p class="muted" style="margin:8px 0 0;line-height:1.5">Guarda el archivo descargado como <code>fotos/fotos.js</code> (reemplaza el que hay) y vuelve a publicar la carpeta. Si agregaste fotos propias, copia también esas imágenes a <code>fotos/</code>. Mientras tanto, tus marcas ya valen en este navegador.</p>
+    <textarea id="json" readonly spellcheck="false"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn" id="copy" type="button">Copiar</button><button class="btn" id="clear" type="button">Borrar todas mis marcas</button></div>
+  </details>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const shot = $('shot'), wrap = $('photoWrap'), msg = $('msg'), stats = $('stats'), creditEl = $('credit');
+  const skipBtn = $('skip'), undoBtn = $('undo'), dlBtn = $('dl'), jsonEl = $('json');
+  const autoBtn = $('auto'), stopBtn = $('stop'), autoMsg = $('autoMsg'), barEl = $('bar'), targetEl = $('target');
+  const KEY = 'pc2-marks', SEEN = 'pc2-seen';
+  const QUERIES = ['cat pointing', 'cat paw reaching', 'cat reaching up', 'cat paw touching', 'cat sniffing', 'cat nose close up', 'cat looking up', 'cat paw out', 'kitten reaching', 'cat stretching paw', 'cat paw on glass'];
+  const LBL = { cat: 'a cat', paw: 'a cat paw', nose: 'a cat nose' };
+  const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (_) { return d; } };
+  const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+  const safeUrl = u => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? u : null;
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  let marks = load(KEY, []);        // saved in this browser (photos from the web)
+  let ownMarks = [];                // photos you added; they need their file in fotos/
+  const previews = new Map();       // entry -> image to show in the review grid (own photos)
+  const kinds = new Map();          // entry -> 'pata' | 'nariz' | 'a mano'
+  let seen = new Set(load(SEEN, []));
+  let queue = [], current = null, history = [], skipped = 0, filling = false, ovLast = 0, dead = false;
+  const auto = { running: false, analyzed: 0, kept: 0, dropped: 0 };
+
+  const all = () => marks.concat(ownMarks);
+  const exportText = () => 'window.PC_FOTOS = ' + JSON.stringify(all(), null, 1) + ';\n';
+  function render() {
+    stats.textContent = `${all().length} marcadas · ${skipped} descartadas · ${queue.length} en cola`;
+    undoBtn.disabled = !history.length || auto.running;
+    skipBtn.disabled = !current || auto.running;
+    dlBtn.disabled = !all().length;
+    jsonEl.value = exportText();
+    $('review').hidden = !all().length;
+    document.body.classList.toggle('auto', auto.running);
+  }
+
+  // ---------- photo queue ----------
+  function preload(url) {
+    return new Promise(res => {
+      const im = new Image(); let done = false;
+      const fin = ok => { if (!done) { done = true; clearTimeout(tm); res(ok); } };
+      const tm = setTimeout(() => fin(false), 12000);
+      im.onload = () => fin(im.naturalWidth > 0); im.onerror = () => fin(false);
+      im.referrerPolicy = 'no-referrer'; im.src = url;
+    });
+  }
+  async function getJson(url) {
+    const c = new AbortController(), tm = setTimeout(() => c.abort(), 12000);
+    try { const r = await fetch(url, { signal: c.signal }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(tm); }
+  }
+  function credit(r) {
+    const lic = String(r.license || '').toLowerCase();
+    const label = lic === 'cc0' ? 'CC0' : lic === 'pdm' ? 'Dominio público' : ('CC ' + lic.toUpperCase() + ' ' + (r.license_version || '')).trim();
+    let who = String(r.creator || 'autor desconocido').replace(/\s+/g, ' ').trim();
+    if (who.length > 40) who = who.slice(0, 39) + '…';
+    return `Foto: ${who} · ${label}`;
+  }
+  async function fill() {
+    if (filling || dead) return;
+    filling = true;
+    try {
+      while (queue.length < 8 && !dead) {
+        const wait = ovLast + 1100 - Date.now();
+        if (wait > 0) await sleep(wait);
+        ovLast = Date.now();
+        const u = new URL('https://api.openverse.org/v1/images/'), p = u.searchParams;
+        p.set('q', QUERIES[Math.floor(Math.random() * QUERIES.length)]);
+        p.set('page_size', '20'); p.set('page', String(1 + Math.floor(Math.random() * 4)));
+        p.set('category', 'photograph'); p.set('license_type', 'commercial,modification'); p.set('mature', 'false');
+        let data;
+        try { data = await getJson(u.toString()); }
+        catch (e) {
+          if (/HTTP 429/.test(String(e))) { msg.textContent = 'Openverse pidió esperar un momento. Reintento en unos segundos…'; await sleep(8000); continue; }
+          p.set('page', '1'); await sleep(1200); ovLast = Date.now();
+          try { data = await getJson(u.toString()); } catch (_) { msg.textContent = 'No pude conectar con Openverse. Puedes usar "Agregar mis fotos".'; break; }
+        }
+        const items = shuffle((data.results || []).filter(r => r && r.id && !seen.has(r.id) && !r.mature && safeUrl(r.thumbnail) && safeUrl(r.foreign_landing_url)));
+        let k = 0;
+        const w = async () => {
+          while (k < items.length && queue.length < 14) {
+            const r = items[k++]; seen.add(r.id);
+            if (await preload(r.thumbnail)) { queue.push({ url: r.thumbnail, credito: credit(r), enlace: r.foreign_landing_url }); if (!current) next(); render(); }
+          }
+        };
+        await Promise.all([w(), w(), w()]);
+        store(SEEN, [...seen].slice(-3000));
+      }
+    } finally { filling = false; }
+  }
+  function show(item) {
+    current = item;
+    shot.src = item.preview || item.url;
+    wrap.hidden = false; msg.hidden = true; creditEl.textContent = item.credito || '';
+  }
+  function next() {
+    const it = queue.shift() || null;
+    if (it) show(it);
+    else { current = null; wrap.hidden = true; msg.hidden = false; msg.textContent = 'Buscando más fotos…'; creditEl.textContent = ''; }
+    if (queue.length < 6) fill();
+    render();
+  }
+
+  // ---------- saving a mark ----------
+  function ring(x, y) {
+    const d = document.createElement('div'); d.className = 'ring'; d.style.left = x + 'px'; d.style.top = y + 'px';
+    wrap.appendChild(d); setTimeout(() => d.remove(), 900);
+  }
+  function commit(item, x, y, how) {
+    const entry = { x: +clamp(x, 0, 1).toFixed(3), y: +clamp(y, 0, 1).toFixed(3), credito: item.credito || '' };
+    if (item.archivo) { entry.archivo = item.archivo; previews.set(entry, item.preview); ownMarks.push(entry); }
+    else { entry.url = item.url; entry.enlace = item.enlace; marks.push(entry); store(KEY, marks); }
+    kinds.set(entry, how);
+    history.push({ type: 'mark', item, entry });
+    return entry;
+  }
+  shot.addEventListener('click', e => {
+    if (!current || auto.running) return;
+    const r = shot.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    ring(e.clientX - r.left, e.clientY - r.top);
+    commit(current, x, y, 'a mano');
+    next(); renderGrid();
+  });
+  function skip() {
+    if (!current || auto.running) return;
+    skipped++; history.push({ type: 'skip', item: current });
+    next();
+  }
+  function undo() {
+    if (auto.running) return;
+    const h = history.pop(); if (!h) return;
+    if (h.type === 'skip') skipped = Math.max(0, skipped - 1);
+    else if (h.item.archivo) ownMarks = ownMarks.filter(m => m !== h.entry);
+    else { marks = marks.filter(m => m !== h.entry); store(KEY, marks); }
+    if (current) queue.unshift(current);
+    show(h.item); render(); renderGrid();
+  }
+  skipBtn.addEventListener('click', skip);
+  undoBtn.addEventListener('click', undo);
+  addEventListener('keydown', e => {
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.key === 's' || e.key === 'S') skip(); else if (e.key === 'z' || e.key === 'Z') undo();
+  });
+
+  // ---------- the automatic part ----------
+  // Turns what the detector found (boxes in pixels) into one pointing point, as fractions of the photo.
+  function computeTip(dets, iw, ih) {
+    const cl = b => ({ xmin: clamp(b.xmin, 0, iw), ymin: clamp(b.ymin, 0, ih), xmax: clamp(b.xmax, 0, iw), ymax: clamp(b.ymax, 0, ih) });
+    const cats = dets.filter(d => d.label === LBL.cat && d.score >= 0.1).sort((a, b) => b.score - a.score);
+    if (!cats.length) return { reject: 'no se ve un gato' };
+    const cb = cl(cats[0].box), cx = (cb.xmin + cb.xmax) / 2, cy = (cb.ymin + cb.ymax) / 2;
+    const half = Math.hypot(cb.xmax - cb.xmin, cb.ymax - cb.ymin) / 2 || 1;
+    const ex = { xmin: cb.xmin - 0.3 * (cb.xmax - cb.xmin), xmax: cb.xmax + 0.3 * (cb.xmax - cb.xmin), ymin: cb.ymin - 0.3 * (cb.ymax - cb.ymin), ymax: cb.ymax + 0.3 * (cb.ymax - cb.ymin) };
+    const parts = [];
+    for (const d of dets) {
+      if ((d.label !== LBL.paw && d.label !== LBL.nose) || d.score < 0.05) continue;
+      const b = cl(d.box), px = (b.xmin + b.xmax) / 2, py = (b.ymin + b.ymax) / 2;
+      if (px < ex.xmin || px > ex.xmax || py < ex.ymin || py > ex.ymax) continue;
+      const dist = Math.hypot(px - cx, py - cy), ph = Math.hypot(b.xmax - b.xmin, b.ymax - b.ymin) / 2;
+      parts.push({ kind: d.label === LBL.paw ? 'pata' : 'nariz', px, py, dist, ext: dist / half, ph, score: d.score });
+    }
+    if (!parts.length) return { reject: 'no se ve la pata ni la nariz' };
+    const paws = parts.filter(p => p.kind === 'pata').sort((a, b) => b.ext - a.ext);
+    const noses = parts.filter(p => p.kind === 'nariz').sort((a, b) => b.score - a.score);
+    // a paw reaching away from the body is the pointer; otherwise the nose; otherwise any paw
+    const pick = (paws[0] && paws[0].ext >= 0.5) ? paws[0] : (noses[0] || paws[0]);
+    let tx = pick.px, ty = pick.py;
+    if (pick.dist > 1) { tx += (pick.px - cx) / pick.dist * 0.35 * pick.ph; ty += (pick.py - cy) / pick.dist * 0.35 * pick.ph; }
+    return { x: clamp(tx / iw, 0, 1), y: clamp(ty / ih, 0, 1), kind: pick.kind };
+  }
+
+  let detP = null;
+  function getDetector() {
+    if (window.PC_DETECTOR) return Promise.resolve(window.PC_DETECTOR);   // test hook
+    if (detP) return detP;
+    detP = (async () => {
+      autoMsg.textContent = 'Cargando el modelo…';
+      const tf = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1');
+      if (location.protocol === 'file:') tf.env.useBrowserCache = false;
+      const files = {};
+      const pipe = await tf.pipeline('zero-shot-object-detection', 'Xenova/owlvit-base-patch32', {
+        dtype: 'q8',
+        progress_callback: p => {
+          if (p && p.status === 'progress' && p.file && p.total) {
+            files[p.file] = { l: p.loaded || 0, t: p.total };
+            let l = 0, t = 0; for (const f of Object.values(files)) { l += f.l; t += f.t; }
+            autoMsg.textContent = `Descargando el modelo… ${Math.round(100 * l / t)}% (${Math.round(t / 1e6)} MB, solo la primera vez)`;
+          }
+        }
+      });
+      return (url, labels) => pipe(url, labels, { threshold: 0.04, top_k: 40 });
+    })();
+    detP.catch(() => { detP = null; });
+    return detP;
+  }
+
+  async function analyze(item, detect) {
+    let blobUrl = item.preview, own = false;
+    if (!blobUrl) {
+      const r = await fetch(item.url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      blobUrl = URL.createObjectURL(await r.blob()); own = true;
+    }
+    try {
+      const im = new Image(); im.src = blobUrl; await im.decode();
+      const dets = await detect(blobUrl, [LBL.cat, LBL.paw, LBL.nose]);
+      return computeTip(Array.isArray(dets) ? dets : [], im.naturalWidth, im.naturalHeight);
+    } finally { if (own) URL.revokeObjectURL(blobUrl); }
+  }
+
+  function autoStatus(extra) {
+    autoMsg.textContent = `Analizadas ${auto.analyzed} · marcadas ${auto.kept} · descartadas ${auto.dropped}` + (extra ? ' · ' + extra : '');
+    const target = +targetEl.value || 40;
+    barEl.hidden = false; barEl.firstElementChild.style.width = Math.min(100, 100 * all().length / target) + '%';
+  }
+  async function autoRun() {
+    if (auto.running) return;
+    const target = clamp(+targetEl.value || 40, 5, 300);
+    auto.running = true; auto.analyzed = auto.kept = auto.dropped = 0;
+    autoBtn.hidden = true; stopBtn.hidden = false; render();
+    let detect;
+    try { detect = await getDetector(); }
+    catch (e) {
+      auto.running = false; autoBtn.hidden = false; stopBtn.hidden = true; render();
+      autoMsg.textContent = 'No se pudo cargar el modelo (' + (e && e.message ? e.message : 'error de red') + '). Revisa tu conexión, o publica la carpeta (ver README) y vuelve a intentarlo desde ahí. Mientras tanto puedes marcar a mano.';
+      return;
+    }
+    autoStatus();
+    let stuck = 0;
+    while (auto.running && all().length < target) {
+      if (!current) { if (++stuck > 60) { autoMsg.textContent = 'No llegan más fotos. Intenta de nuevo en un momento.'; break; } await sleep(500); continue; }
+      stuck = 0;
+      const item = current;
+      autoStatus('analizando…');
+      let res;
+      try { res = await analyze(item, detect); } catch (e) { res = { reject: 'no se pudo leer la foto' }; }
+      if (!auto.running) break;
+      auto.analyzed++;
+      if (res.reject) { auto.dropped++; skipped++; history.push({ type: 'skip', item }); next(); }
+      else {
+        auto.kept++;
+        const r = shot.getBoundingClientRect();
+        ring(res.x * r.width, res.y * r.height);
+        commit(item, res.x, res.y, res.kind);
+        await sleep(450);
+        next(); renderGrid();
+      }
+      autoStatus();
+    }
+    const done = all().length >= target;
+    auto.running = false; autoBtn.hidden = false; stopBtn.hidden = true; render(); renderGrid();
+    autoStatus(done ? 'listo, revisa las marcas abajo' : 'detenido');
+    if (done) $('review').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  autoBtn.addEventListener('click', autoRun);
+  stopBtn.addEventListener('click', () => { auto.running = false; });
+
+  // ---------- review grid ----------
+  function renderGrid() {
+    const grid = $('grid'); grid.textContent = '';
+    all().forEach(entry => {
+      const cell = document.createElement('div'); cell.className = 'cell';
+      const img = document.createElement('img'); img.alt = 'Foto marcada'; img.draggable = false; img.referrerPolicy = 'no-referrer';
+      img.src = entry.url || previews.get(entry) || '';
+      const dot = document.createElement('i'); dot.className = 'dot';
+      const place = () => { dot.style.left = entry.x * 100 + '%'; dot.style.top = entry.y * 100 + '%'; };
+      place();
+      img.addEventListener('click', e => {
+        const r = img.getBoundingClientRect();
+        entry.x = +clamp((e.clientX - r.left) / r.width, 0, 1).toFixed(3); entry.y = +clamp((e.clientY - r.top) / r.height, 0, 1).toFixed(3);
+        kinds.set(entry, 'a mano'); tag.textContent = 'a mano';
+        if (!entry.archivo) store(KEY, marks);
+        place(); render();
+      });
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'del'; del.textContent = '✕'; del.setAttribute('aria-label', 'Quitar esta foto');
+      del.addEventListener('click', () => {
+        marks = marks.filter(m => m !== entry); ownMarks = ownMarks.filter(m => m !== entry);
+        store(KEY, marks); render(); renderGrid();
+      });
+      const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = kinds.get(entry) || '';
+      tag.hidden = !kinds.get(entry);
+      cell.append(img, dot, del, tag); grid.appendChild(cell);
+    });
+  }
+
+  // ---------- your own photos ----------
+  $('own').addEventListener('change', e => {
+    const files = [...e.target.files].filter(f => f.type.startsWith('image/')).slice(0, 60);
+    const items = files.map(f => ({ preview: URL.createObjectURL(f), url: null, archivo: f.name, credito: 'Foto propia' }));
+    if (current && !auto.running) queue.unshift(current);
+    queue = items.concat(queue); e.target.value = '';
+    if (!auto.running) { current = null; next(); } else render();
+  });
+
+  // ---------- export ----------
+  dlBtn.addEventListener('click', () => {
+    const blob = new Blob([exportText()], { type: 'text/javascript' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'fotos.js';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    $('exp').open = true;
+  });
+  $('copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(jsonEl.value); $('copy').textContent = 'Copiado'; }
+    catch (_) { jsonEl.focus(); jsonEl.select(); $('copy').textContent = 'Selecciona y copia (Ctrl+C)'; }
+    setTimeout(() => { $('copy').textContent = 'Copiar'; }, 2200);
+  });
+  let sure = false;
+  $('clear').addEventListener('click', () => {
+    if (!sure) { sure = true; $('clear').textContent = 'Pulsa otra vez para borrar'; setTimeout(() => { sure = false; $('clear').textContent = 'Borrar todas mis marcas'; }, 3000); return; }
+    marks = []; ownMarks = []; history = []; store(KEY, []); sure = false; $('clear').textContent = 'Borrar todas mis marcas'; render(); renderGrid();
+  });
+
+  render(); renderGrid();
+  fill();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Pointer Cat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: the whole screen is the playfield. A real photo of a cat is placed so the tip of its paw or nose
+   (marked beforehand in marcar.html) sits exactly under the cursor. Controls on top, credit and hint at the bottom. */
+:root {
+  --bg: #e3eeee; --dots: rgba(31, 60, 70, .16); --fg: #1d2a33; --muted: #53666f;
+  --accent: #e43f78; --accent-fg: #ffffff; --panel: rgba(255, 255, 255, .78);
+  --line: rgba(29, 42, 51, .16); --shadow: rgba(20, 40, 50, .3);
+  --display: 'Fredoka', 'Trebuchet MS', system-ui, sans-serif;
+  --text: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a2130; --dots: rgba(255, 255, 255, .09); --fg: #edf3f7; --muted: #9db0bd;
+    --accent: #ff7ba8; --accent-fg: #2b0f1b; --panel: rgba(36, 44, 62, .82);
+    --line: rgba(255, 255, 255, .2); --shadow: rgba(0, 0, 0, .55);
+  }
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; box-sizing: border-box;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dots) 1.2px, transparent 1.7px);
+  background-size: 26px 26px;
+  color: var(--fg); font-family: var(--text); font-size: 15px;
+  padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+#card {
+  position: fixed; left: 0; top: 0; z-index: 1; pointer-events: none; will-change: transform;
+  border-radius: 14px; overflow: hidden; background: var(--panel);
+  box-shadow: 0 10px 34px var(--shadow);
+}
+#card img { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; -webkit-user-drag: none; }
+#card.pop { animation: pop .16s ease-out; }
+@keyframes pop { from { opacity: .35; } to { opacity: 1; } }
+
+.chrome {
+  position: relative; z-index: 3;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px;
+}
+h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 1.7rem; line-height: 1.1; letter-spacing: .01em; }
+#count { margin: 2px 0 0; color: var(--muted); font-size: .85rem; font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  appearance: none; font: 700 .9rem var(--text); color: var(--fg); text-decoration: none;
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 999px;
+  padding: .6em 1.1em; cursor: pointer; display: inline-flex; align-items: center;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.btn:hover { border-color: var(--fg); }
+.btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+.empty {
+  position: fixed; z-index: 2; inset: 0; display: grid; place-items: center; padding: 70px 16px 70px; pointer-events: none;
+}
+.empty > div {
+  pointer-events: auto; max-width: 30rem; background: var(--panel); border: 1.5px solid var(--line);
+  border-radius: 18px; padding: 22px 24px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.empty h2 { margin: 0 0 8px; font-family: var(--display); font-size: 1.3rem; text-wrap: balance; }
+.empty p { margin: 0 0 14px; line-height: 1.5; color: var(--muted); font-weight: 600; }
+.empty .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.foot {
+  position: fixed; z-index: 3; left: 0; right: 0; bottom: env(safe-area-inset-bottom, 0px);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+.credit {
+  pointer-events: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 700; font-size: .8rem; color: var(--fg); text-decoration: none;
+  background: var(--panel); border: 1.5px solid var(--line); border-radius: 999px; padding: .35em .9em;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+a.credit[href]::after { content: " ↗"; }
+a.credit:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.hint { margin: 0; max-width: 36rem; text-align: center; text-wrap: balance; color: var(--muted); font-weight: 700; font-size: .85rem; line-height: 1.4; }
+@media (prefers-reduced-motion: reduce) { #card.pop { animation: none; } }
+</style>
+</head>
+<body>
+
+<div id="card" hidden><img id="photo" alt="Un gato que apunta al cursor" draggable="false"></div>
+
+<header class="chrome">
+  <div>
+    <h1>Pointer Cat</h1>
+    <p id="count" aria-live="polite">Buscando gatos…</p>
+  </div>
+  <div class="actions">
+    <button class="btn" id="next" type="button">Otro gatito</button>
+    <a class="btn primary" href="marcar.html">Marcar fotos</a>
+  </div>
+</header>
+
+<div class="empty" id="empty" hidden>
+  <div>
+    <h2>Todavía no hay fotos de gatos marcadas</h2>
+    <p>Cada foto necesita saber adónde apunta el gato con la pata o la nariz. La página de marcado lo detecta sola: busca fotos de gatos y guarda ese punto. Con unas 30 fotos ya funciona bien.</p>
+    <div class="row">
+      <a class="btn primary" href="marcar.html">Marcar fotos</a>
+      <a class="btn" href="v1-cara-reemplazada.html">Ver la primera versión</a>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <a class="credit" id="credit" target="_blank" rel="noopener noreferrer" hidden></a>
+  <p class="hint" id="hint" hidden>Mueve el cursor y el gato te apunta. Haz clic para cambiar de gato.</p>
+</div>
+
+<script src="fotos/fotos.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const card = $('card'), photo = $('photo'), countEl = $('count'), emptyEl = $('empty');
+  const creditEl = $('credit'), hintEl = $('hint'), nextBtn = $('next');
+  const KEY = 'pc2-marks';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const safeUrl = u => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? u : null;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  let entries = [];            // marked photos that loaded: { src, x, y, aspect, credit, link }
+  let W = innerWidth, H = innerHeight;
+  let P = { x: W / 2, y: H / 2 }, S = { x: W / 2, y: H / 2 };
+  let cur = null, size = { w: 0, h: 0 }, swapPos = { x: -9999, y: -9999 }, recent = [], last = 0;
+
+  // ---------- data ----------
+  async function readEntries() {
+    const raw = [];
+    if (Array.isArray(window.PC_FOTOS)) raw.push(...window.PC_FOTOS);   // fotos/fotos.js (works without a server)
+    try { const m = JSON.parse(localStorage.getItem(KEY) || '[]'); if (Array.isArray(m)) raw.push(...m); } catch (_) {}
+    const seen = new Set(), out = [];
+    for (const e of raw.slice(0, 600)) {
+      if (!e || typeof e !== 'object') continue;
+      const src = safeUrl(e.url) || (typeof e.archivo === 'string' && /^[\w\-. ()]+\.(jpe?g|png|webp|gif|avif)$/i.test(e.archivo) ? 'fotos/' + encodeURIComponent(e.archivo) : null);
+      const x = +e.x, y = +e.y;
+      if (!src || seen.has(src) || !(x >= 0 && x <= 1 && y >= 0 && y <= 1)) continue;
+      seen.add(src);
+      out.push({ src, x, y, credit: typeof e.credito === 'string' ? e.credito : '', link: safeUrl(e.enlace) });
+    }
+    return out;
+  }
+  function preload(e) {
+    return new Promise(res => {
+      const im = new Image(); let done = false;
+      const fin = ok => { if (done) return; done = true; clearTimeout(tm); res(ok); };
+      const tm = setTimeout(() => fin(false), 12000);
+      im.onload = () => { e.aspect = im.naturalWidth / (im.naturalHeight || 1); fin(im.naturalWidth > 0); };
+      im.onerror = () => fin(false);
+      im.referrerPolicy = 'no-referrer';
+      im.src = e.src;
+    });
+  }
+
+  // ---------- placing the photo ----------
+  function sizeOf(e) {
+    let h = clamp(H * 0.6, 240, 560), w = h * e.aspect;
+    if (w > W * 0.86) { w = W * 0.86; h = w / e.aspect; }
+    return { w, h };
+  }
+  // fraction of the photo that stays on screen when its tip sits on point p
+  function visible(e, flip, p) {
+    const s = sizeOf(e), tx = flip ? 1 - e.x : e.x;
+    const l = p.x - tx * s.w, t = p.y - e.y * s.h;
+    const ix = Math.max(0, Math.min(l + s.w, W) - Math.max(l, 0));
+    const iy = Math.max(0, Math.min(t + s.h, H) - Math.max(t, 0));
+    return (ix * iy) / (s.w * s.h);
+  }
+  function choose(p, avoid) {
+    let best = null, bs = Infinity;
+    for (const e of entries) for (const flip of [false, true]) {
+      let sc = (1 - visible(e, flip, p)) * 400 + Math.random() * 70;
+      if (e === avoid) sc += 220;
+      if (recent.includes(e)) sc += 110;
+      if (sc < bs) { bs = sc; best = { e, flip }; }
+    }
+    return best;
+  }
+  function swap(pick) {
+    cur = pick;
+    size = sizeOf(pick.e);
+    card.style.width = size.w + 'px'; card.style.height = size.h + 'px';
+    photo.src = pick.e.src;
+    photo.style.transform = pick.flip ? 'scaleX(-1)' : '';
+    card.hidden = false;
+    if (!reduce) { card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop'); }
+    swapPos = { x: P.x, y: P.y };
+    recent.push(pick.e); if (recent.length > Math.min(8, entries.length - 1)) recent.shift();
+    if (pick.e.credit) {
+      creditEl.textContent = pick.e.credit;
+      if (pick.e.link) creditEl.setAttribute('href', pick.e.link); else creditEl.removeAttribute('href');
+      creditEl.hidden = false;
+    } else creditEl.hidden = true;
+  }
+
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (!cur) return;
+    const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t;
+    const moved = Math.hypot(P.x - swapPos.x, P.y - swapPos.y);
+    if (visible(cur.e, cur.flip, P) < 0.55 || moved > 420) {
+      const pick = choose(P, cur.e);
+      if (pick && (pick.e !== cur.e || pick.flip !== cur.flip)) swap(pick);
+      else swapPos = { x: P.x, y: P.y };
+    }
+    const k = reduce ? 1 : 1 - Math.exp(-dt * 34);
+    S.x += (P.x - S.x) * k; S.y += (P.y - S.y) * k;
+    const tx = cur.flip ? 1 - cur.e.x : cur.e.x;
+    card.style.transform = `translate(${(S.x - tx * size.w).toFixed(1)}px, ${(S.y - cur.e.y * size.h).toFixed(1)}px)`;
+  }
+
+  // ---------- input ----------
+  function setP(e) { P.x = e.clientX; P.y = e.clientY; }
+  addEventListener('pointermove', setP, { passive: true });
+  addEventListener('pointerdown', e => {
+    setP(e);
+    if (e.target.closest && e.target.closest('.chrome, .credit, .empty')) return;
+    random();
+  });
+  function random() { if (entries.length > 1) swap(choose(P, cur && cur.e)); }
+  nextBtn.addEventListener('click', random);
+  addEventListener('resize', () => { W = innerWidth; H = innerHeight; if (cur) { size = sizeOf(cur.e); card.style.width = size.w + 'px'; card.style.height = size.h + 'px'; } });
+
+  // ---------- start ----------
+  (async function start() {
+    const raw = await readEntries();
+    if (!raw.length) { countEl.textContent = 'Sin fotos marcadas'; emptyEl.hidden = false; nextBtn.hidden = true; return; }
+    let started = false, loaded = 0, i = 0;
+    const worker = async () => {
+      while (i < raw.length) {
+        const e = raw[i++];
+        if (await preload(e)) {
+          entries.push(e); loaded++;
+          countEl.textContent = `${loaded} fotos de gatos`;
+          if (!started) { started = true; hintEl.hidden = false; swap(choose(P, null)); requestAnimationFrame(t => { last = t; frame(t); }); }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    if (!started) { countEl.textContent = 'No se pudo cargar ninguna foto'; emptyEl.hidden = false; emptyEl.querySelector('h2').textContent = 'No cargó ninguna foto'; emptyEl.querySelector('p').textContent = 'Las fotos marcadas no se pudieron descargar. Revisa tu conexión o vuelve a marcarlas.'; nextBtn.hidden = true; }
+    else countEl.textContent = `${entries.length} fotos de gatos`;
+  })();
+})();
+</script>
+</body>
+</html>
